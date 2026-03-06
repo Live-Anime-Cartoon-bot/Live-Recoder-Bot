@@ -1,0 +1,179 @@
+import os
+import re
+import subprocess
+import asyncio
+from datetime import datetime, timedelta
+import requests
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+
+# ===== CONFIG =====
+TOKEN = "8191916199:AAFNLrNG68q9oqxbv1zXMlO6wy1o84dQ64c"
+OWNER_ID = 5856009289
+
+# short link config
+SHORT_API = "65aa5be4d757fb7242fff9dde00f6cd5d4acc977"
+SHORT_DOMAIN = "https://shortxlinks.in"
+
+# users store
+users = {}  # {user_id: {"LittlesinghamMovie_Bot": str, "verified_until": datetime, "short_link": str}}
+
+# ===== VERIFY =====
+async def verify(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+
+    short_link = "https://shortxlinks.in/E9jnWFl"
+
+    users[user.id] = {
+        "username": "LittlesinghamMovie_Bot",
+        "verified_until": None,
+        "short_link": short_link
+    }
+
+    await update.message.reply_text(
+        f"✅ Solve this link to verify:\n{short_link}\n\nAfter solve, type:\n/confirm"
+    )
+
+# ===== CONFIRM (auto check) =====
+async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if user_id not in users:
+        await update.message.reply_text("❌ First use /verify")
+        return
+
+    short_link = users[user_id].get("short_link")
+
+    if not short_link:
+        await update.message.reply_text("❌ No link found, use /verify")
+        return
+
+    api = f"{SHORT_DOMAIN}/api?api={SHORT_API}&url={short_link}"
+
+    resp = requests.get(api).json()
+
+    if not resp.get("success"):
+        await update.message.reply_text("❌ Link not solved yet!")
+        return
+
+    users[user_id]["verified_until"] = datetime.now() + timedelta(hours=5)
+
+    await update.message.reply_text("✅ Verification successful for 5 hours!")
+
+# ===== STATUS =====
+async def statusme(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    info = users.get(update.effective_user.id)
+
+    if not info or not info["verified_until"]:
+        await update.message.reply_text("❌ Not verified")
+        return
+
+    if datetime.now() < info["verified_until"]:
+        remaining = info["verified_until"] - datetime.now()
+        hours = remaining.seconds // 3600
+        minutes = (remaining.seconds % 3600) // 60
+        await update.message.reply_text(f"✅ Verified\nTime left: {hours}h {minutes}m")
+    else:
+        users.pop(update.effective_user.id)
+        await update.message.reply_text("❌ Expired")
+
+# ===== RECORD QUEUE =====
+record_queue = []
+active = False
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if user_id not in users:
+        await update.message.reply_text("❌ First /verify")
+        return
+
+    text = update.message.text
+    times = re.findall(r"\b\d{1,2}:\d{2}\s?(?:am|pm)\b", text.lower())
+    link = re.search(r"https?://\S+\.m3u8", text)
+
+    if len(times) < 2 or not link:
+        await update.message.reply_text("Format: 10:30PM 10:50PM URL")
+        return
+
+    record_queue.append({
+        "user_id": user_id,
+        "username": users[user_id]["username"],
+        "link": link.group(),
+        "start": times[0].replace(" ", ""),
+        "end": times[1].replace(" ", "")
+    })
+
+    await update.message.reply_text(f"✅ Added to queue. Position: {len(record_queue)}")
+
+# ===== UPLOAD =====
+async def send_file(bot, chat_id, filepath):
+    if not os.path.exists(filepath):
+        return
+
+    await bot.send_video(
+        chat_id=chat_id,
+        video=open(filepath, "rb"),
+        caption="✅ Upload Complete",
+        supports_streaming=True
+    )
+
+# ===== PROCESS QUEUE (FFmpeg command) =====
+async def process_queue(app):
+    global active
+
+    while True:
+        if record_queue and not active:
+            active = True
+            task = record_queue.pop(0)
+
+            output = f"{task['username']}_{int(datetime.now().timestamp())}.mp4"
+
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-i", "http://103.229.254.25:7001/play/a0dh/index.m3u8",
+                "-t", "00:02:00",
+                "-map", "0:v",
+                "-map", "0:a",
+                "-vf",
+                "scale=854:480:force_original_aspect_ratio=decrease,pad=854:480:(ow-iw)/2:(oh-ih)/2:black,drawtext=text='Anime-Cartoon.kesug.com':fontcolor=white:fontsize=20:box=1:boxcolor=black@0.8:x=w-tw-25:y=25",
+                "-c:v", "libx264",
+                "-preset", "slow",
+                "-b:v", "330k",
+                "-c:a", "aac",
+                "-b:a", "48k",
+                "-movflags", "+faststart",
+                output
+            ]
+
+            subprocess.run(cmd)
+
+            await app.bot.send_message(task["user_id"], "✅ Recording completed. Uploading...")
+            await send_file(app.bot, task["user_id"], output)
+
+            active = False
+
+        await asyncio.sleep(2)
+
+# ===== COMMANDS =====
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Bot Ready\nUse /verify")
+
+# ===== MAIN =====
+def main():
+    app = ApplicationBuilder().token(TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("verify", verify))
+    app.add_handler(CommandHandler("confirm", confirm))
+    app.add_handler(CommandHandler("statusme", statusme))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    asyncio.get_event_loop().create_task(process_queue(app))
+
+    print("Bot running...")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
