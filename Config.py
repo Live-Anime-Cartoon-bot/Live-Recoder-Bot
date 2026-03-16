@@ -3,7 +3,7 @@
 import os
 
 # Bot token from @botfather
-BOT_TOKEN = ""
+BOT_TOKEN = "t53"
 # From my.telegram.org/
 API_ID = ""
 API_HASH =  ""
