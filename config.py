@@ -2,7 +2,7 @@ from os import environ
 
 API_ID = int(environ.get("API_ID", "29481626"))
 API_HASH = environ.get("API_HASH", "4892185769903521077c4cea97808b8c")
-BOT_TOKEN = environ.get("BOT_TOKEN", "8619959255:AAGEkg8chHCcgaRkFVYcJ10mrFqyyNq2Y9o")
+BOT_TOKEN = environ.get("BOT_TOKEN", "8619959255:AAFM9xBgLouwUMizDlTASIFbcHoCqD6gmkU")
 
 # ðŸ‘¥ Authorized Users - Bot will work only with these users
 AUTH_USERS = list(map(int, environ.get("AUTH_USERS", "5856009289 7484617637").split()))
