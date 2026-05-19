@@ -5,7 +5,7 @@ API_HASH = environ.get("API_HASH", "4892185769903521077c4cea97808b8c")
 BOT_TOKEN = environ.get("BOT_TOKEN", "8619959255:AAGEkg8chHCcgaRkFVYcJ10mrFqyyNq2Y9o")
 
 # ðŸ‘¥ Authorized Users - Bot will work only with these users
-AUTH_USERS = list(map(int, environ.get("AUTH_USERS", "12345678 87654321").split()))
+AUTH_USERS = list(map(int, environ.get("AUTH_USERS", "5856009289 87654321").split()))
 
 # ðŸ‘‘ Owner/Admin ID - Multiple owners supported
 OWNER_ID = list(map(int, environ.get("OWNER_IDS", "5856009289").split()))
