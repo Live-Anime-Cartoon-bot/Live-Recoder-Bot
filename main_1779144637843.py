@@ -228,7 +228,7 @@ async def help_cmd(client, message):
         "✅ Multi-stream support\n"
         "✅ Emergency stop with partial video upload\n\n"
         
-        "👨‍💻 _Bot maintained by @TEMohanish_",
+        "👨‍💻 _Bot maintained by @LS_Owner_bot",
         disable_web_page_preview=True
     )
 
