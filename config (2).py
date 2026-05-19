@@ -1,7 +1,7 @@
 from os import environ
 
 API_ID = int(environ.get("API_ID", ""))
-API_HASH = environ.get("API_HASH", "")
+API_HASH = environ.get("4892185769903521077c4cea97808b8c", "")
 BOT_TOKEN = environ.get("BOT_TOKEN", "")
 
 AUTH_USERS = list(map(int, environ.get("AUTH_USERS", "12345678 87654321").split()))
