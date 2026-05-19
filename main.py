@@ -1183,7 +1183,7 @@ async def ytdlp_download(url: str, output_path: str, cookies_file: Optional[str]
 
 OTT_DOMAINS = (
     "youtube.com", "youtu.be",
-    "hotstar.com", "disneyplus.com",
+    "Jiohotstar.com", "disneyplus.com",
     "netflix.com", "primevideo.com",
     "zee5.com", "sonyliv.com",
     "jiocinema.com", "voot.com",
