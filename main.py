@@ -744,7 +744,7 @@ async def progress_for_pyrogram(current, total, ref_message, start, msg, save_di
     uploaded_mb = current / (1024 * 1024)
     total_mb = total / (1024 * 1024)
     speed_mb = speed / (1024 * 1024)
-    bar = "█" * int(15 * percentage // 100) + "░" * (15 - int(15 * percentage // 100))
+    bar = "■" * int(15 * percentage // 100) + "□" * (15 - int(15 * percentage // 100))
     update_points = {0, 10, 25, 50, 75, 90, 95, 99, 100}
 
     if int(percentage) in update_points or current == total:
@@ -1603,4 +1603,7 @@ if __name__ == "__main__":
     print("🎬 Starting Video Recorder Bot...")
     print(f"⚡ Max concurrent recordings per user: {MAX_CONCURRENT}")
     print("✅ Bot is now running!")
-    app.run()
+    
+    app.start()
+    print("🤖 OTT Recorder Bot is Live with Auto-Crop, Compress & Custom SS!")
+    idle()
