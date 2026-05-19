@@ -347,7 +347,7 @@ async def help_cmd(client, message):
         "🔸 `/rec` timestamp format: `HH:MM:SS`\n"
         "🔸 `/screenshot` max 30 per video\n"
         f"🔸 Default filename: `{config.DEFAULT_FILENAME}`\n\n"
-        "👨‍💻 _Bot maintained by @LS_Owner_bot_",
+        "👨‍💻 _Bot maintained by @LS_Owner_bot",
         disable_web_page_preview=True
     )
 
@@ -868,7 +868,7 @@ async def handle_record(client: Client, ref_message: Message, setup: dict, user_
                     else:
                         pct = min((elapsed / duration) * 100, 100) if duration > 0 else 0
                         eta = ((duration - elapsed) / (pct / 100)) if pct > 0 else 0
-                        bar = "█" * int(20 * pct // 100) + "░" * (20 - int(20 * pct // 100))
+                        bar = "♥️" * int(20 * pct // 100) + "░" * (20 - int(20 * pct // 100))
                         await msg.edit_text(
                             f"{emoji} **Slot {n} — Recording**\n"
                             f"📁 `{raw_filename}`\n"
