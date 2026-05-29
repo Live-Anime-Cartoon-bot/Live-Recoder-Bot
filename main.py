@@ -16,6 +16,7 @@ from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from datetime import datetime, timedelta
 import config
 import pytz
+from streams_db import get_stream_url, search_stream, get_all_streams
 
 # Timezone from config.py
 tz = pytz.timezone(config.TIMEZONE)
@@ -47,11 +48,35 @@ active_recordings = set()  # Track users with active recordings
 MAX_CONCURRENT_RECORDINGS = 3
 
 
+def resolve_stream_identifier(identifier: str) -> tuple:
+    """
+    Resolve stream identifier (channel name or URL) to actual URL
+    Returns: (success: bool, url: str, stream_name: str, message: str)
+    """
+    # Check if it's already a URL
+    if identifier.startswith("http://") or identifier.startswith("https://"):
+        return True, identifier, "Custom Link", "✅ Direct URL detected"
+    
+    # Try to find stream by exact name
+    url = get_stream_url(identifier)
+    if url:
+        return True, url, identifier, f"✅ Stream found: {identifier}"
+    
+    # Search for similar streams
+    results = search_stream(identifier)
+    if results:
+        suggestion = results[0]
+        url = get_stream_url(suggestion)
+        return True, url, suggestion, f"✅ Stream matched: {suggestion}"
+    
+    return False, None, None, f"❌ Stream '{identifier}' not found. Use /streams to see available channels."
+
+
 @app.on_message(filters.command("start") & filters.user(config.AUTH_USERS))
 async def start(client, message):
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("📖 Help", callback_data="help")],
-        [InlineKeyboardButton("💠 Plans", callback_data="plan")],
+        [InlineKeyboardButton("📺 Streams", callback_data="streams")],
         [InlineKeyboardButton("📢 Channel", url="https://t.me/ToonixIndia")]
     ])
     await message.reply_text(
@@ -61,6 +86,28 @@ async def start(client, message):
         "📚 Use /help for detailed instructions.",
         reply_markup=kb
     )
+
+
+@app.on_message(filters.command("streams") & filters.user(config.AUTH_USERS))
+async def streams_cmd(client, message):
+    """Show all available streams"""
+    streams = get_all_streams()
+    text = "📺 **Available Streams for Recording:**\n\n"
+    
+    for i, (name, url) in enumerate(streams.items(), 1):
+        text += f"{i}. **{name}**\n"
+    
+    text += (
+        "\n\n💡 **Usage Examples:**\n"
+        "```\n"
+        "/rec Pogo 00:50:00 Filename\n"
+        "/rec \"Cartoon Network\" 01:30:00 MyVideo\n"
+        "/rec http://link... 00:45:00 Custom\n"
+        "```\n\n"
+        "👉 You can use stream name OR direct link!"
+    )
+    
+    await message.reply_text(text)
 
 
 @app.on_message(filters.command("cancel") & filters.user(config.AUTH_USERS))
@@ -129,34 +176,6 @@ async def cancel_command(client, message: Message):
         await message.reply_text("❌ **Error cancelling recording!**")
 
 
-async def cleanup_partial_files(user_id: int):
-    """Clean up partially created files for a user"""
-    try:
-        # Find and remove any directories/files created during this session
-        download_dir = config.DOWNLOAD_DIRECTORY
-        if not os.path.exists(download_dir):
-            return
-            
-        current_time = time.time()
-        # Look for directories created in the last hour that might be partial
-        for item in os.listdir(download_dir):
-            item_path = join(download_dir, item)
-            if os.path.isdir(item_path):
-                try:
-                    # Check if directory was created recently (within last hour)
-                    dir_time = os.path.getctime(item_path)
-                    if current_time - dir_time < 3600:  # 1 hour
-                        # Check if it contains partial video files
-                        video_files = [f for f in os.listdir(item_path) if f.endswith('.mkv') or f.endswith('.mp4')]
-                        if video_files:
-                            shutil.rmtree(item_path)
-                            LOG.info(f"Cleaned up partial files in {item_path}")
-                except Exception as e:
-                    LOG.warning(f"Error cleaning up {item_path}: {e}")
-    except Exception as e:
-        LOG.error(f"Error in cleanup_partial_files: {e}")
-
-
 @app.on_message(filters.command("status") & filters.user(config.AUTH_USERS))
 async def status_cmd(client, message):
     uid = message.from_user.id
@@ -191,6 +210,7 @@ async def status_cmd(client, message):
         f"📊 **Recording Status**\n\n"
         f"🆔 **Task ID:** `{status['id']}`\n"
         f"📁 **Filename:** `{status['filename']}`\n"
+        f"📺 **Stream:** `{status.get('stream_name', 'Unknown')}`\n"
         f"⏱ **Duration:** `{status['progress']}` / `{status['target']}`\n"
         f"⏳ **ETA:** `{eta_str}`\n"
         f"🕒 **Started:** `{start_time_str}`\n"
@@ -209,28 +229,32 @@ async def help_cmd(client, message):
         "🛠 **Video Recorder Help Menu**\n\n"
         
         "🎯 **How to Record:**\n"
-        "```\n/rec http://link 00:00:00 My Filename\n```\n"
+        "**Method 1 - By Channel Name:**\n"
+        "```\n/rec Pogo 00:50:00 Filename\n```\n"
+        "**Method 2 - By Direct Link:**\n"
+        "```\n/rec http://link... 00:50:00 Filename\n```\n"
         
         "⚡ **Available Commands:**\n"
-        "• 🎥 `/rec` - Start recording from stream URL\n"
-        "• 🛑 `/cancel` - Stop ongoing recording (sends recorded portion)\n"
+        "• 🎥 `/rec` - Start recording from stream or URL\n"
+        "• 🛑 `/cancel` - Stop ongoing recording\n"
         "• 📊 `/status` - Check current recording progress\n"
+        "• 📺 `/streams` - See all available channels\n"
         "• 🏠 `/start` - Show welcome message\n"
-        "• 💰 `/plan` - View subscription plans\n"
-        "• 🛠 `/tools` - Extra utilities\n\n"
+        "• 🛠 `/help` - This help menu\n\n"
         
-        "📝 **Usage Notes:**\n"
-        "🔸 Stream link must be accessible & DRM-free\n"
-        "🔸 Timestamp format: `HH:MM:SS` (e.g., 01:30:00)\n"
+        "📝 **Format Notes:**\n"
+        "🔸 Channel name or direct URL (both work)\n"
+        "🔸 Duration format: `HH:MM:SS` (e.g., 00:50:00)\n"
         "🔸 Filename should not contain: `/\\:*?\"<>|`\n"
         f"🔸 Default filename: `{config.DEFAULT_FILENAME}`\n"
         "🔸 Output format: MKV with original quality\n\n"
         
         "⚙️ **Features:**\n"
+        "✅ Record by channel name OR direct link\n"
         "✅ Auto thumbnail generation\n"
         "✅ Progress tracking\n"
         "✅ Multi-stream support\n"
-        "✅ Emergency stop with partial video upload\n"
+        "✅ Emergency stop with partial upload\n"
         f"✅ Maximum {MAX_CONCURRENT_RECORDINGS} concurrent recordings\n\n"
         
         "👨‍💻 _Bot maintained by @TEMohanish_",
@@ -244,7 +268,6 @@ async def rec_command(client, message: Message):
     
     # ⚠️ CHECK CONCURRENT RECORDING LIMIT
     if len(active_recordings) >= MAX_CONCURRENT_RECORDINGS:
-        remaining = MAX_CONCURRENT_RECORDINGS - len(active_recordings)
         return await message.reply_text(
             f"⚠️ **Recording Limit Reached!**\n\n"
             f"📊 **Active Recordings:** `{len(active_recordings)}/{MAX_CONCURRENT_RECORDINGS}`\n\n"
@@ -253,13 +276,16 @@ async def rec_command(client, message: Message):
             parse_mode="markdown"
         )
     
-    if len(message.command) < 2:
+    if len(message.command) < 3:
         return await message.reply_text(
             "❌ **Invalid Format!**\n\n"
             "📌 **Correct Usage:**\n"
-            "```\n/rec http://link 00:00:00 filename\n```\n"
-            "💡 **Example:**\n"
-            "`/rec https://example.com/stream 00:10:30 MyVideo`"
+            "```\n/rec [Channel Name OR Link] [Duration] [Filename]\n```\n"
+            "💡 **Examples:**\n"
+            "`/rec Pogo 00:50:00 MyVideo`\n"
+            "`/rec \"Cartoon Network\" 01:30:00 MyShow`\n"
+            "`/rec http://link... 00:45:00 Custom`\n\n"
+            "Use /streams to see available channels"
         )
     
     # Check if user already has an active recording
@@ -287,21 +313,24 @@ async def handle_record(client, message: Message):
         active_recordings.add(user_id)
         
         # Extract parameters from command
-        if message.command[0] == "rec":
-            params = " ".join(message.command[1:])
-        else:
-            params = message.text
+        # Format: /rec [channel/link] [duration] [filename...]
+        parts = message.text.split(None, 3)  # Split into max 4 parts
         
-        # Split into url, timestamp, and optional filename
-        parts = params.split(" ", 2)
-        url = parts[0]
-        timestamp = parts[1]
+        if len(parts) < 4:
+            raise Exception("Invalid command format. Use /help for examples.")
         
-        # Use custom filename if provided, otherwise use default
-        if len(parts) > 2:
-            raw_filename = parts[2]
-        else:
-            raw_filename = config.DEFAULT_FILENAME
+        stream_identifier = parts[1]
+        timestamp = parts[2]
+        raw_filename = parts[3] if len(parts) > 3 else config.DEFAULT_FILENAME
+        
+        # 🔍 RESOLVE STREAM IDENTIFIER (Channel Name or URL)
+        success, url, stream_name, resolve_msg = resolve_stream_identifier(stream_identifier)
+        
+        if not success:
+            await msg.edit_text(f"❌ **Stream Resolution Failed!**\n\n{resolve_msg}\n\nUse /streams to see available channels.")
+            return
+        
+        await msg.edit_text(f"🔍 {resolve_msg}")
         
         filename = f"{raw_filename.strip()}.mkv"
         save_dir = join(config.DOWNLOAD_DIRECTORY, str(int(time.time())))
@@ -313,9 +342,10 @@ async def handle_record(client, message: Message):
         user_status[user_id] = {
             "id": int(user_tasks[user_id]),
             "filename": raw_filename.strip(),
+            "stream_name": stream_name,
             "target": timestamp,
             "progress": "00:00:00",
-            "save_dir": save_dir  # Store for cleanup
+            "save_dir": save_dir
         }
 
         # Recording progress tracking
@@ -324,33 +354,24 @@ async def handle_record(client, message: Message):
         
         async def update_recording_progress():
             while user_id in user_tasks:
-                # Check if user cancelled
                 if user_id in cancelled_users:
                     break
                     
                 elapsed = time.time() - recording_start
                 progress_formatted = TimeFormatter(int(elapsed * 1000))
                 
-                # Update progress in user_status
                 if user_id in user_status:
                     user_status[user_id]["progress"] = progress_formatted
                 
-                # Calculate speed (assuming linear progress)
                 if elapsed > 0:
-                    speed_mb_per_sec = random.uniform(2.0, 8.0)  # Simulated speed for recording
+                    speed_mb_per_sec = random.uniform(2.0, 8.0)
                     percentage = min((elapsed / duration) * 100, 100) if duration > 0 else 0
-                    
-                    # Calculate ETA
-                    if percentage > 0:
-                        eta = (duration - elapsed) / (percentage / 100) if percentage < 100 else 0
-                    else:
-                        eta = 0
+                    eta = (duration - elapsed) / (percentage / 100) if percentage > 0 and percentage < 100 else 0
                 else:
                     speed_mb_per_sec = 0
                     percentage = 0
                     eta = 0
                 
-                # Recording progress bar
                 bar_length = 20
                 filled_length = int(bar_length * percentage // 100)
                 bar = '█' * filled_length + '░' * (bar_length - filled_length)
@@ -358,6 +379,7 @@ async def handle_record(client, message: Message):
                 progress_text = (
                     f"🎬 **Recording Progress**\n"
                     f"`[{bar}]` {percentage:.1f}%\n"
+                    f"📺 **Channel:** `{stream_name}`\n"
                     f"⏱️ **Time:** `{progress_formatted} / {TimeFormatter(duration * 1000)}`\n"
                     f"⚡ **Speed:** `{speed_mb_per_sec:.1f} MB/s`\n"
                     f"⏳ **ETA:** `{TimeFormatter(int(eta * 1000))}`\n"
@@ -370,7 +392,7 @@ async def handle_record(client, message: Message):
                 except:
                     pass
                 
-                await asyncio.sleep(5)  # Update every 5 seconds
+                await asyncio.sleep(5)
 
         # Start progress tracking
         progress_task = asyncio.create_task(update_recording_progress())
@@ -394,7 +416,7 @@ async def handle_record(client, message: Message):
         
         # Store FFmpeg PID
         user_ffmpeg_pids[user_id] = ffmpeg_process.pid
-        LOG.info(f"Started FFmpeg process {ffmpeg_process.pid} for user {user_id}")
+        LOG.info(f"Started FFmpeg process {ffmpeg_process.pid} for user {user_id} (Stream: {stream_name})")
         
         # Wait for FFmpeg to complete
         stdout, stderr = await ffmpeg_process.communicate()
@@ -458,6 +480,7 @@ async def handle_record(client, message: Message):
         if was_cancelled:
             caption = (
                 f"🎬 **{raw_filename.strip()}**\n\n"
+                f"📺 **Channel:** `{stream_name}`\n"
                 f"⏱ **Duration:** `{TimeFormatter(dur * 1000)}`\n"
                 f"📁 **Format:** MKV (Partial Recording)\n"
                 f"👤 **Recorded by:** @{message.from_user.username or 'anonymous'}\n\n"
@@ -466,6 +489,7 @@ async def handle_record(client, message: Message):
         else:
             caption = (
                 f"🎬 **{raw_filename.strip()}**\n\n"
+                f"📺 **Channel:** `{stream_name}`\n"
                 f"⏱ **Duration:** `{TimeFormatter(dur * 1000)}`\n"
                 f"📁 **Format:** MKV (Original Quality)\n"
                 f"👤 **Recorded by:** @{message.from_user.username or 'anonymous'}\n\n"
@@ -478,10 +502,10 @@ async def handle_record(client, message: Message):
         await message.reply_video(
             video=video_path,
             caption=caption,
-            duration=dur,  # Explicitly set duration
+            duration=dur,
             thumb=thumb_path if os.path.exists(thumb_path) else None,
             progress=progress_for_pyrogram,
-            progress_args=(message, start_time, msg, save_dir, was_cancelled)  # Pass save_dir and cancellation status
+            progress_args=(message, start_time, msg, save_dir, was_cancelled)
         )
 
         # ✅ SUCCESS: Now clean up files after successful upload
@@ -502,7 +526,7 @@ async def handle_record(client, message: Message):
                     err_text = err_text[:4000] + "... [truncated]"
                 await msg.edit(f"❌ **Recording Failed!**\n\n`{err_text}`")
             
-            # ❌ ERROR: Clean up files on failure (unless cancelled - files already cleaned)
+            # ❌ ERROR: Clean up files on failure
             if user_id not in cancelled_users and save_dir and os.path.exists(save_dir):
                 try:
                     shutil.rmtree(save_dir)
@@ -519,8 +543,8 @@ async def handle_record(client, message: Message):
         user_tasks.pop(user_id, None)
         user_ffmpeg_pids.pop(user_id, None)
         progress_tasks.pop(user_id, None)
-        cancelled_users.discard(user_id)  # Remove from cancelled list
-        active_recordings.discard(user_id)  # Remove from active recordings
+        cancelled_users.discard(user_id)
+        active_recordings.discard(user_id)
         
         LOG.info(f"Recording ended for user {user_id}. Active: {len(active_recordings)}/{MAX_CONCURRENT_RECORDINGS}")
 
@@ -579,7 +603,6 @@ async def progress_for_pyrogram(current, total, message, start, msg, save_dir=No
                     try:
                         shutil.rmtree(save_dir)
                         LOG.info(f"Cleaned up files after upload: {save_dir}")
-                        # Update message to show cleanup complete
                         await asyncio.sleep(2)
                         if was_cancelled:
                             await msg.edit_text("✅ **Partial Recording Sent!**\n🗑️ **Temporary files cleaned up!**")
