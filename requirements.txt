@@ -1,4 +1,4 @@
-pyrogram==2.0.106
+hachoir==2.0.106
 tgcrypto
 aiohttp
 pytz
@@ -6,3 +6,5 @@ psutil
 requests
 yt-dlp
 hachoir
+yt-dlp
+curl_cffi
