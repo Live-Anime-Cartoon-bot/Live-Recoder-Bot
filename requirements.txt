@@ -6,3 +6,4 @@ psutil
 requests
 yt-dlp
 curl_cffi
+hachoir
