@@ -5,3 +5,4 @@ pytz
 psutil
 requests
 yt-dlp
+hachoir
