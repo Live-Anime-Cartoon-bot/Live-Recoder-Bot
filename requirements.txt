@@ -1,4 +1,4 @@
-hachoir==2.0.10a6
+pyrogram
 tgcrypto
 aiohttp
 pytz
