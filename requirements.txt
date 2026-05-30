@@ -1,10 +1,8 @@
-hachoir==2.0.106
+hachoir==2.0.10a6
 tgcrypto
 aiohttp
 pytz
 psutil
 requests
-yt-dlp
-hachoir
 yt-dlp
 curl_cffi
